@@ -1,0 +1,30 @@
+name: SEC Filings Checker (2)
+
+on:
+  schedule:
+    - cron: "2-59/5 * * * *"
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Install Python dependencies
+        run: |
+          pip install feedparser python-dotenv
+
+      - name: Run SEC filings checker
+        env:
+          GMAIL_SENDER_EMAIL: ${{ secrets.GMAIL_SENDER_EMAIL }}
+          GMAIL_SENDER_PASSWORD: ${{ secrets.GMAIL_SENDER_PASSWORD }}
+          GMAIL_RECEIVER_EMAIL: ${{ secrets.GMAIL_RECEIVER_EMAIL }}
+        run: |
+          python check_filings.py
