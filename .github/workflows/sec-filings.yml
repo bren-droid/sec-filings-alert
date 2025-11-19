@@ -1,6 +1,7 @@
 name: SEC Filings Checker (0)
 
 on:
+  workflow_dispatch:   # ← Esto habilita el botón “Run workflow”
   schedule:
     - cron: "0-59/5 * * * *"
 
