@@ -1,30 +1,48 @@
-name: SEC Filings Checker (1)
+import os
+import feedparser
+import smtplib
+from email.mime.text import MIMEText
 
-on:
-  schedule:
-    - cron: "1-59/5 * * * *"
+# Verificar variables de entorno
+sender_email = os.getenv("GMAIL_SENDER_EMAIL")
+sender_password = os.getenv("GMAIL_SENDER_PASSWORD")
+receiver_email = os.getenv("GMAIL_RECEIVER_EMAIL")
 
-jobs:
-  run:
-    runs-on: ubuntu-latest
+if not sender_email or not sender_password or not receiver_email:
+    print("ERROR: faltan variables de entorno. Asegúrate de tener GMAIL_SENDER_EMAIL, GMAIL_SENDER_PASSWORD, GMAIL_RECEIVER_EMAIL.")
+    exit(1)
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+# URL RSS del feed de la SEC
+RSS_FEED = "https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=&company=&dateb=&owner=include&start=0&count=40&output=atom"
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.10"
+def send_email(subject, body):
+    msg = MIMEText(body)
+    msg["Subject"] = subject
+    msg["From"] = sender_email
+    msg["To"] = receiver_email
 
-      - name: Install Python dependencies
-        run: |
-          pip install feedparser python-dotenv
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(sender_email, sender_password)
+            server.sendmail(sender_email, receiver_email, msg.as_string())
+        print("Correo enviado.")
+    except Exception as e:
+        print("Error al enviar correo:", e)
 
-      - name: Run SEC filings checker
-        env:
-          GMAIL_SENDER_EMAIL: ${{ secrets.GMAIL_SENDER_EMAIL }}
-          GMAIL_SENDER_PASSWORD: ${{ secrets.GMAIL_SENDER_PASSWORD }}
-          GMAIL_RECEIVER_EMAIL: ${{ secrets.GMAIL_RECEIVER_EMAIL }}
-        run: |
-          python check_filings.py
+def check_filings():
+    feed = feedparser.parse(RSS_FEED)
+
+    if not feed.entries:
+        print("No hay nuevos filings en el feed.")
+        return
+
+    latest = feed.entries[0]
+    title = latest.get("title", "Sin título")
+    link = latest.get("link", "Sin enlace")
+
+    message = f"Nuevo filing detectado:\n\n{title}\n{link}"
+    print(message)
+    send_email("Nuevo Filing detectado", message)
+
+if __name__ == "__main__":
+    check_filings()
