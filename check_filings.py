@@ -12,8 +12,11 @@ if not sender_email or not sender_password or not receiver_email:
     print("ERROR: faltan variables de entorno. Asegúrate de tener GMAIL_SENDER_EMAIL, GMAIL_SENDER_PASSWORD, GMAIL_RECEIVER_EMAIL.")
     exit(1)
 
-# URL RSS del feed de la SEC
-RSS_FEED = "https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=&company=&dateb=&owner=include&start=0&count=40&output=atom"
+# CIK de la Republica del Peru
+CIK_PERU = "0000053111"
+
+# Feed RSS SOLO de ese CIK
+RSS_FEED = f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={CIK_PERU}&type=&dateb=&owner=exclude&count=40&output=atom"
 
 def send_email(subject, body):
     msg = MIMEText(body)
@@ -33,16 +36,16 @@ def check_filings():
     feed = feedparser.parse(RSS_FEED)
 
     if not feed.entries:
-        print("No hay nuevos filings en el feed.")
+        print("No hay filings de Republic of Peru.")
         return
 
     latest = feed.entries[0]
     title = latest.get("title", "Sin título")
     link = latest.get("link", "Sin enlace")
 
-    message = f"Nuevo filing detectado:\n\n{title}\n{link}"
+    message = f"Nuevo filing de REPUBLIC OF PERU:\n\n{title}\n{link}"
     print(message)
-    send_email("Nuevo Filing detectado", message)
+    send_email("Nuevo Filing de Republic of Peru", message)
 
 if __name__ == "__main__":
     check_filings()
