@@ -11,25 +11,41 @@ Requiere estas variables de entorno (están en GitHub Secrets):
 """
 
 import os
-import json
-import requests
-import smtplib
-from email.mime.text import MIMEText
 import sys
+import traceback
+from dotenv import load_dotenv
 
-SEARCH_QUERY = "REPUBLIC OF PERU"
-SEARCH_URL = "https://data.sec.gov/api/search"
-STATE_FILE = "last_filing.json"
+# carga .env si existe (útil para pruebas locales)
+load_dotenv()
 
-# ======== Cargar secrets ========
-GMAIL_SENDER = os.getenv("GMAIL_SENDER_EMAIL")
-GMAIL_PASS = os.getenv("GMAIL_SENDER_PASSWORD")
-GMAIL_RECEIVER = os.getenv("GMAIL_RECEIVER_EMAIL")
-USER_AGENT = os.getenv("SEC_USER_AGENT") or GMAIL_SENDER
+def get_env_or_exit(name):
+    v = os.getenv(name)
+    if not v:
+        print(f"ERROR: falta la variable de entorno {name}")
+        return None
+    return v
 
-if not GMAIL_SENDER or not GMAIL_PASS or not GMAIL_RECEIVER:
-    print("ERROR: faltan variables de entorno. Verifica que todos los secrets estén configurados.")
+GMAIL_SENDER_EMAIL = get_env_or_exit("GMAIL_SENDER_EMAIL")
+GMAIL_SENDER_PASSWORD = get_env_or_exit("GMAIL_SENDER_PASSWORD")
+GMAIL_RECEIVER_EMAIL = get_env_or_exit("GMAIL_RECEIVER_EMAIL")
+SEC_USER_AGENT = os.getenv("SEC_USER_AGENT", "sec-filings-alert/0.1")  # default razonable
+
+if not (GMAIL_SENDER_EMAIL and GMAIL_SENDER_PASSWORD and GMAIL_RECEIVER_EMAIL):
+    print("Faltan secrets requeridos. Revisa Settings → Secrets en GitHub.")
     sys.exit(1)
+
+# Wrap main execution so que capturamos excepciones y las imprimimos en logs
+def main_wrapper():
+    try:
+        main()  # tu función principal existente
+    except Exception as e:
+        print("EXCEPCION NO CONTROLADA:")
+        traceback.print_exc()
+        sys.exit(2)
+
+if __name__ == "__main__":
+    main_wrapper()
+
 
 
 # ======== Función: enviar email ========
