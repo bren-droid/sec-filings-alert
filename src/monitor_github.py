@@ -10,6 +10,8 @@ BASE_DIR = Path(__file__).resolve().parents[1]
 STATE_FILE = BASE_DIR / "last_seen.json"
 
 USER_AGENT = os.getenv("SEC_USER_AGENT", "").strip()
+print("SEC_USER_AGENT en runtime:", repr(USER_AGENT))
+
 CIK = os.getenv("CIK_FILTER", "").strip()
 COMPANY_NAME = os.getenv("COMPANY_NAME", "").strip().lower()
 
