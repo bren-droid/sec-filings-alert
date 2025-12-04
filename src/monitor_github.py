@@ -9,43 +9,19 @@ from notifier import send_email
 BASE_DIR = Path(__file__).resolve().parents[1]
 STATE_FILE = BASE_DIR / "last_seen.json"
 
-# Variables desde GitHub Actions
 USER_AGENT = os.getenv("SEC_USER_AGENT", "").strip()
 CIK = os.getenv("CIK_FILTER", "").strip()
 COMPANY_NAME = os.getenv("COMPANY_NAME", "").strip().lower()
 
 HEADERS = {"User-Agent": USER_AGENT}
-SEC_SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik}.json"
+SEC_URL = "https://data.sec.gov/submissions/CIK{cik}.json"
 
 
-def get_json_with_retries(url, headers, max_attempts=3, backoff_seconds=2):
-    """Hace petición GET con reintentos en caso de error o rate limit (429)."""
-    attempt = 0
-    last_exc = None
-
-    while attempt < max_attempts:
-        try:
-            r = requests.get(url, headers=headers, timeout=20)
-
-            # Rate limit SEC
-            if r.status_code == 429:
-                time.sleep(backoff_seconds * (attempt + 1))
-                attempt += 1
-                continue
-
-            r.raise_for_status()
-            return r.json()
-
-        except Exception as e:
-            last_exc = e
-            attempt += 1
-            time.sleep(backoff_seconds * attempt)
-
-    raise last_exc
-
-
-def padded_cik(cik):
-    return cik.zfill(10)
+def fetch_json(url):
+    """GET simple para el JSON de la SEC."""
+    r = requests.get(url, headers=HEADERS, timeout=20)
+    r.raise_for_status()
+    return r.json()
 
 
 def load_last_seen():
@@ -57,96 +33,59 @@ def load_last_seen():
     return {"last": None}
 
 
-def save_last_seen(state):
-    STATE_FILE.write_text(json.dumps(state))
+def save_last_seen(value):
+    STATE_FILE.write_text(json.dumps(value))
 
 
-def company_name_matches(data):
-    """Verifica si el nombre de la entidad contiene COMPANY_NAME."""
-    candidates = []
-
-    # Campos típicos del JSON de submissions
-    for key in ("name", "companyName", "entityName"):
-        val = data.get(key)
-        if isinstance(val, str):
-            candidates.append(val)
-
-    # Revisar en filings recent
+def find_latest(data):
     recent = data.get("filings", {}).get("recent", {})
-    for key in ("primaryDocument", "primaryDocDescription", "companyName"):
-        val = recent.get(key)
-        if isinstance(val, str):
-            candidates.append(val)
-        elif isinstance(val, list):
-            candidates.append(" ".join(map(str, val)))
-
-    for c in candidates:
-        if c and COMPANY_NAME in c.lower():
-            return True
-
-    return False
-
-
-def find_latest_filing(data):
-    recent = data.get("filings", {}).get("recent", {})
-    acc_nums = recent.get("accessionNumber", [])
+    acc = recent.get("accessionNumber", [])
     forms = recent.get("form", [])
     dates = recent.get("filingDate", [])
-
-    if not (acc_nums and forms and dates):
+    if not (acc and forms and dates):
         return None
-
     return {
-        "accession": acc_nums[0],
+        "accession": acc[0],
         "form": forms[0],
-        "date": dates[0]
+        "date": dates[0],
     }
 
 
 def main():
     if not USER_AGENT or not CIK:
-        print("ERROR: faltan SEC_USER_AGENT o CIK_FILTER en secrets.")
+        print("Faltan variables: SEC_USER_AGENT, CIK_FILTER")
         return
 
-    state = load_last_seen()
-    last_seen = state.get("last")
-
-    url = SEC_SUBMISSIONS_URL.format(cik=padded_cik(CIK))
-
+    url = SEC_URL.format(cik=CIK.zfill(10))
     try:
-        data = get_json_with_retries(url, HEADERS)
+        data = fetch_json(url)
     except Exception as e:
-        print(f"ERROR obteniendo JSON desde SEC: {e}")
+        print("Error obteniendo SEC JSON:", e)
         return
 
-    # Filtrar por nombre
-    if COMPANY_NAME and not company_name_matches(data):
-        print(f"La entidad no coincide con COMPANY_NAME: {COMPANY_NAME}")
-        return
-
-    latest = find_latest_filing(data)
-
+    latest = find_latest(data)
     if not latest:
-        print("No se encontraron filings recientes.")
+        print("No filings recientes")
         return
 
     latest_key = f"{latest['accession']}_{latest['form']}_{latest['date']}"
+    last_key = load_last_seen().get("last")
 
-    if latest_key != last_seen:
-        body = (
-            f"Nuevo filing detectado:\n"
-            f"Form: {latest['form']}\n"
-            f"Accession: {latest['accession']}\n"
-            f"Date: {latest['date']}\n"
-            f"Link: https://www.sec.gov/ix?doc=/Archives/edgar/data/{int(CIK)}/{latest['accession'].replace('-','')}/{latest['accession']}-index.htm"
-        )
+    if latest_key == last_key:
+        print("No hay nuevos filings")
+        return
 
-        send_email("Nuevo Filing Detectado", body)
+    # Enviar email
+    body = (
+        f"Nuevo filing detectado:\n"
+        f"Form: {latest['form']}\n"
+        f"Accession: {latest['accession']}\n"
+        f"Date: {latest['date']}\n"
+    )
+    send_email("Nuevo filing detectado", body)
 
-        save_last_seen({"last": latest_key})
-        print("Alerta enviada.")
-    else:
-        print("No hay nuevos filings.")
+    save_last_seen({"last": latest_key})
+    print("Alerta enviada")
 
 
 if __name__ == "__main__":
